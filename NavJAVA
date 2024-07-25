@@ -1,0 +1,112 @@
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Scanner;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class Directions {
+
+    public static void main(String[] args) {
+        String apiKey = "AIzaSyCwL25yvXya8mVFU5jLHsrAz6-AgDOIWbU";
+        String startPoint = "קניון עזריאלי";
+        String endPoint = "קניון איילון";
+
+        List<NavigationStep> navigationSteps = buildNavigationImagesWithDetails(startPoint, endPoint, apiKey);
+        if (navigationSteps != null) {
+            for (int i = 0; i < navigationSteps.size(); i++) {
+                NavigationStep step = navigationSteps.get(i);
+                System.out.println("Step " + (i + 1) + ": " + step.instructions +
+                        "\nDistance: " + step.distance + ", Duration: " + step.duration +
+                        "\nImage URL: " + step.imageUrl + "\n");
+            }
+        } else {
+            System.out.println("Error: Unable to fetch navigation steps.");
+        }
+    }
+
+    public static List<NavigationStep> buildNavigationImagesWithDetails(String start, String end, String apiKey) {
+        List<NavigationStep> navigationSteps = new ArrayList<>();
+        JSONArray steps = getDirections(start, end, apiKey);
+        if (steps == null) {
+            return null;
+        }
+
+        for (int i = 0; i < steps.length(); i++) {
+            JSONObject step = steps.getJSONObject(i);
+            double lat = step.getJSONObject("end_location").getDouble("lat");
+            double lng = step.getJSONObject("end_location").getDouble("lng");
+            String location = lat + "," + lng;
+            String imageUrl = getStreetViewImage(location, apiKey);
+            String instructions = cleanHtmlTags(step.getString("html_instructions"));
+            String distance = step.getJSONObject("distance").getString("text");
+            String duration = step.getJSONObject("duration").getString("text");
+
+            navigationSteps.add(new NavigationStep(instructions, distance, duration, imageUrl));
+        }
+
+        return navigationSteps;
+    }
+
+    public static JSONArray getDirections(String start, String end, String apiKey) {
+        String directionsEndpoint = "https://maps.googleapis.com/maps/api/directions/json";
+        String urlString = String.format("%s?origin=%s&destination=%s&key=%s",
+                directionsEndpoint, start, end, apiKey);
+
+        try {
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+
+            if (conn.getResponseCode() != 200) {
+                return null;
+            }
+
+            Scanner scanner = new Scanner(url.openStream());
+            StringBuilder response = new StringBuilder();
+            while (scanner.hasNext()) {
+                response.append(scanner.nextLine());
+            }
+            scanner.close();
+
+            JSONObject data = new JSONObject(response.toString());
+            if (!data.has("routes") || data.getJSONArray("routes").length() == 0) {
+                return null;
+            }
+
+            return data.getJSONArray("routes").getJSONObject(0).getJSONArray("legs").getJSONObject(0).getJSONArray("steps");
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static String getStreetViewImage(String location, String apiKey) {
+        String streetViewEndpoint = "https://maps.googleapis.com/maps/api/streetview";
+        return String.format("%s?location=%s&size=600x300&key=%s", streetViewEndpoint, location, apiKey);
+    }
+
+    public static String cleanHtmlTags(String text) {
+        Pattern pattern = Pattern.compile("<.*?>");
+        Matcher matcher = pattern.matcher(text);
+        return matcher.replaceAll("");
+    }
+}
+
+class NavigationStep {
+    String instructions;
+    String distance;
+    String duration;
+    String imageUrl;
+
+    NavigationStep(String instructions, String distance, String duration, String imageUrl) {
+        this.instructions = instructions;
+        this.distance = distance;
+        this.duration = duration;
+        this.imageUrl = imageUrl;
+    }
+}
